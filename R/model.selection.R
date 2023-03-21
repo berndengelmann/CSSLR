@@ -25,6 +25,10 @@
 #' the p-value of the AUC-test is below pAUCTrim
 #' @param pMSETrim When removing a variable, MSE is considered as improved if its value has decreased and
 #' the p-value of the MSE-test is below pMSETrim
+#' @param pAUCEquiv When comparing two models, they are considered as equivalent with respect to AUC
+#' when the p-value of the AUC-test is above pAUCEquiv
+#' @param pMSEEquiv When comparing two models, they are considered as equivalent with respect to MSE
+#' when the p-value of the MSE-test is above pMSEEquiv
 #' @param applyAIC Apply the AIC criterion when deciding about model improvement (TRUE); ignore AIC (FALSE)
 #' @param applyBIC Apply the BIC criterion when deciding about model improvement (TRUE); ignore BIC (FALSE)
 #' @param panelDataIdentifier In panel data sets, multiple data sets are recorded at different points in time
@@ -34,6 +38,9 @@
 #' @param maxEquivalentModels If p-values are set rather high, the number of models selected might become very
 #' high; to keep the outcome and computational time manageable, a maximum number of equivalent models selected
 #' in each selection step can be capped by this parameter
+#' @param skipTrimming Model trimming is the least important step in the model selection but might
+#' consume a significant proportion of computational time especially for large data sets. This
+#' parameter allows turning trimming off if it is TRUE and running trimming if it is FALSE
 #' @param debugLevel Parameter that controls printing on screen when running the selection algorithm (0: No output
 #' on screen; 1: Limited output showing the current progress step; 2: Detailed output of the model currently analyzed)
 #' @return A list containing three elements: A list of leading model(s), a second list
@@ -70,8 +77,9 @@
 csslr.model.selection <- function(response, DT.data, selectionVariables, selectionMode = 'AUC_or_MSE',
                                   pCoeff = 0.05, vifCrit = 5.00, pCalib = 0.50, pAUC = 0.05,
                                   pMSE = 0.05, pAUCTrim = 0.025, pMSETrim = 0.025,
-                                  applyAIC = TRUE, applyBIC = TRUE, panelDataIdentifier = '',
-                                  maxSelectionSteps = 10, maxEquivalentModels = 10, debugLevel = 0) {
+                                  pAUCEquiv = 0.10, pMSEEquiv = 0.10, applyAIC = TRUE, applyBIC = TRUE,
+                                  panelDataIdentifier = '', maxSelectionSteps = 10, maxEquivalentModels = 10,
+                                  skipTrimming = FALSE, debugLevel = 0) {
   # Consistency checks
   DT.data <- data.table(DT.data)
   if (class(DT.data)[1] != 'data.table') {
@@ -163,17 +171,21 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
     }
 
     # STEP II: Trim the selected models if necessary
-    if (debugLevel > 0) {
-      print(paste0('  Trim improved models...'))
+    if (skipTrimming == TRUE) {
+      modelsTrimmed = modelsImproved
+    } else {
+      if (debugLevel > 0) {
+        print(paste0('  Trim improved models...'))
+      }
+      resultsTrim <- csslr.model.find.trimmed(modelsImproved, topModels, modelsTestedList,
+                                              DT.data, selectionMode,
+                                              pAUCTrim, pMSETrim, debugLevel)
+      modelsTrimmed <- resultsTrim[['ModelsTrimmed']]
+      modelsTestedList <- resultsTrim[['ModelsTested']]
+      DT.report.trim <- resultsTrim[['Report']]
+      topModels <- resultsTrim[['TopModels']]
+      selectionStepReport[['TRIM']] <- DT.report.trim
     }
-    resultsTrim <- csslr.model.find.trimmed(modelsImproved, topModels, modelsTestedList,
-                                            DT.data, selectionMode,
-                                            pAUCTrim, pMSETrim, debugLevel)
-    modelsTrimmed <- resultsTrim[['ModelsTrimmed']]
-    modelsTestedList <- resultsTrim[['ModelsTested']]
-    DT.report.trim <- resultsTrim[['Report']]
-    topModels <- resultsTrim[['TopModels']]
-    selectionStepReport[['TRIM']] <- DT.report.trim
 
     # STEP III: Find the leading among the improved models
     if (debugLevel > 0) {
@@ -206,7 +218,8 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
         print(paste0('  Identify equivalent models...'))
       }
       resultsEquivalent <- csslr.model.find.equivalent(modelsCandidates, modelsLeading, DT.data,
-                                                       pAUC, pMSE, maxEquivalentModels, debugLevel)
+                                                       pAUCEquiv, pMSEEquiv, maxEquivalentModels,
+                                                       debugLevel)
       modelsEquivalent <- resultsEquivalent[['ModelsEquivalent']]
       DT.report.equivalent <- resultsEquivalent[['Report']]
     } else {
@@ -241,6 +254,7 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
       }
     }
     modelsLeadingOld <- modelsLeading
+    gc()
   }
 
   returnList <- list()

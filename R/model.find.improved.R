@@ -95,14 +95,17 @@ csslr.model.find.improved <- function(modelStart, topModels, modelsTestedList,
         isImproved <- FALSE
         modelDecision <- 'Rejected (BIC)'
       }
+      maxVif <- NA_real_
       if (class(candidateModel$vif)[1] != 'character') {
-        if (max(candidateModel$vif$`GVIF^(1/(2*Df))` >= vifCrit)) {
+        maxVif <- max(candidateModel$vif$`GVIF^(1/(2*Df))`)
+        if (maxVif >= vifCrit) {
           isImproved <- FALSE
           modelDecision <- 'Rejected (VIF)'
         }
       } else {
         # Error comes from aliased coefficients in the model
         if (candidateModel$vif == 'VIF calculation was unsuccessful') {
+          maxVif <- Inf
           isImproved <- FALSE
           modelDecision <- 'Rejected (VIF)'
         }
@@ -153,6 +156,7 @@ csslr.model.find.improved <- function(modelStart, topModels, modelsTestedList,
                                    `Coefficient p-value` = minCoeff,
                                    AIC = AIC.candidate,
                                    BIC = BIC.candidate,
+                                   VIF = maxVif,
                                    AUC = as.numeric(rocTest$roc2$auc),
                                    `AUC-test p-value` = as.numeric(rocTest$p.value),
                                    MSE = as.numeric(calibTest$MSE2),

@@ -336,5 +336,6 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
 
   class(modelResults) <- "csslr.model.analysis.lr"
 
+  gc()
   return(modelResults)
 }

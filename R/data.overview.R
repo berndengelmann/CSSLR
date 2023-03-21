@@ -116,5 +116,6 @@ csslr.data.overview <- function(response, DT.data) {
     DT.overview <- rbind(DT.overview, DT.insert)
   }
 
+  gc()
   return(DT.overview)
 }

@@ -129,5 +129,6 @@ csslr.model.compare.lr_model <- function(glmObject1, glmObject2, DT.data) {
 
   class(compareResults) <- "csslr.model.compare.lr"
 
+  gc()
   return(compareResults)
 }

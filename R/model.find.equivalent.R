@@ -124,8 +124,10 @@ csslr.model.find.equivalent <- function(modelsCandidates, modelsLeading, DT.data
       DT.report <- rbind(DT.report, DT.temp)
     }
   }
-  
-  if (length(modelsEquivalent) > maxEquivalentModels) {
+
+  numEquivalent <- nrow(DT.report[Decision %in% c('Leading','Equivalent')])
+
+  if (numEquivalent > maxEquivalentModels) {
     # Reduce the number of equivalent models and adjust the report
     DT.lead <- DT.report[Decision == 'Leading']
     DT.equiv <- DT.report[Decision == 'Equivalent']
@@ -145,13 +147,13 @@ csslr.model.find.equivalent <- function(modelsCandidates, modelsLeading, DT.data
         break
       }
     }
-    DT.report[!(Model %in% equivModelString), Decision := 'Removed (#Models Limit)']
+    DT.report[!(Model %in% equivModelString) & Decision == 'Equivalent', Decision := 'Removed']
     modelsEquivalent <- list()
     for (i in 1:length(equivModelString)) {
       modelsEquivalent[[i]] <- as.formula(equivModelString[i])
     }
   }
-  
+
   returnList <- list()
   returnList[['ModelsEquivalent']] <- modelsEquivalent
   returnList[['Report']] <- DT.report
