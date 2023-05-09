@@ -1,14 +1,15 @@
 Package: CSSLR
 Type: Package
 Title: Comprehensive Stepwise Selection for Logistic Regression
-Version: 0.1.6
-Date: 2023-03-21
+Version: 0.1.7
+Date: 2023-05-09
 Encoding: UTF-8
+License: MPL-2.0 | file LICENSE
 Depends: R (>= 3.5), data.table (>= 1.10)
-Imports: car, lmtest, pROC, rmarkdown, speedglm, stats
+Imports: car, lmtest, pROC, rmarkdown, speedglm, stats, utils, xtable
 NeedsCompilation: no
-Author: Bernd Engelmann
-Maintainer: Bernd Engelmann <bernd.engelmann@ou.edu.vn>
+Author: Bernd Engelmann <bernd.engelmann@ou.edu.vn>
+Maintainer: Bernd Engelmann <bernd.engelmann@ou.edu.vn>, Terence Then <then.terence@gmail.com>
 Description: Automated stepwise variable selection algorithm for logistic regression
 LazyLoad: yes
-RoxygenNote: 7.2.2
+RoxygenNote: 7.2.3

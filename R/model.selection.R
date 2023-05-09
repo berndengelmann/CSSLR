@@ -71,7 +71,7 @@
 #' print(SelectionOutput[['ModelsLeading']])
 #'
 #' # Print all equivalent models (may include more than the leading models)
-#' print(SelectionOutput[['Equivalent']])
+#' print(SelectionOutput[['ModelsSelected']])
 #'
 #' @export
 csslr.model.selection <- function(response, DT.data, selectionVariables, selectionMode = 'AUC_or_MSE',
@@ -103,6 +103,74 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
   csslr.utils.helpers.inRange(pAUCTrim, 0.0, 1.0, 'Critical AUC test for trimming p-value pAUCTrim')
   csslr.utils.helpers.inRange(pMSETrim, 0.0, 1.0, 'Critical MSE test for trimming p-value pMSETrim')
 
+  #################################################################################################
+  #### Basic consistency checks on variables used in the selection algorithm
+  #### Generation of an info list which contains all information on the parameterization
+  #### of the selection algorithm that will be included into the report
+
+  maxCategories <- getOption('csslr.maxCategories')
+  maxMissingPerc <- getOption('csslr.maxMissingPerc')
+
+  allNames <- names(DT.data)
+  excludedVariables <- allNames[allNames != response & !(allNames %in% selectionVariables)]
+  info.excluded <- data.table()
+  for (varName in selectionVariables) {
+    excludeVar <- FALSE
+    if (class(DT.data[, get(varName)]) %in% c('character','factor')) {
+      # Determine the number of categories
+      tab <- table(DT.data[, get(varName)])
+      # Exclusion if the number of categories is more than maxCategories
+      if (length(tab) > maxCategories) {
+        excludeVar <- TRUE
+        excludeReason <- "Too many categories"
+      }
+    }
+    if (excludeVar == FALSE) {
+      missingPerc <- nrow(DT.data[is.na(get(varName))]) / nrow(DT.data)
+      if (missingPerc > maxMissingPerc) {
+        excludeVar <- TRUE
+        excludeReason <- "Too many missing"
+      }
+    }
+    # Record the outcome if exclusion is necessary
+    if (excludeVar == TRUE) {
+      excludedVariables <- c(excludedVariables, varName)
+      DT.temp <- data.table(Variable = varName, Reason = excludeReason)
+      info.excluded <- rbind(info.excluded, DT.temp)
+    }
+  }
+
+  selectionVariables <- selectionVariables[!(selectionVariables %in% excludedVariables)]
+
+  info <- list()
+  info[['Variables']] <- list()
+  info[['Variables']][['Select']] <- selectionVariables
+  info[['Variables']][['Exclude']] <- excludedVariables
+  info[['Variables']][['Response']] <- response
+  info[['Variables']][['ExcludeInfo']] <- info.excluded
+
+  info[['Params']] <- list()
+  info[['Params']][['SelectionMode']] <- selectionMode
+  info[['Params']][['pCoeff']] <- pCoeff
+  info[['Params']][['vifCrit']] <- vifCrit
+  info[['Params']][['pCalib']] <- pCalib
+  info[['Params']][['pAUC']] <- pAUC
+  info[['Params']][['pMSE']] <- pMSE
+  info[['Params']][['pAUCTrim']] <- pAUCTrim
+  info[['Params']][['pMSETrim']] <- pMSETrim
+  info[['Params']][['pAUCEquiv']] <- pAUCEquiv
+  info[['Params']][['pMSEEquiv']] <- pMSEEquiv
+  info[['Params']][['applyAIC']] <- applyAIC
+  info[['Params']][['applyBIC']] <- applyBIC
+  info[['Params']][['panelDataIdentifier']] <- panelDataIdentifier
+  info[['Params']][['maxSelectionSteps']] <- maxSelectionSteps
+  info[['Params']][['maxEquivalentModels']] <-maxEquivalentModels 
+  info[['Params']][['skipTrimming']] <- skipTrimming
+
+
+  #################################################################################################
+  #### Start of the core selection algorithm
+  
   # Sort variables for selection alphabetically to find them easier in the report
   selectionVariables <- sort(selectionVariables)
   
@@ -164,6 +232,7 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
     if (improvementFound == FALSE) {
       selectionReport[[paste0('Step',selectStep)]] <- selectionStepReport
       returnList <- list()
+      returnList[['Info']] <- info
       returnList[['ModelsLeading']] <- csslr.utils.helpers.fList2C(modelsLeading)
       returnList[['ModelsSelected']] <- csslr.utils.helpers.fList2C(modelsEquivalent)
       returnList[['SelectionReport']] <- selectionReport
@@ -247,6 +316,7 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
       }
       if (terminate == TRUE) {
         returnList <- list()
+        returnList[['Info']] <- info
         returnList[['ModelsLeading']] <- csslr.utils.helpers.fList2C(modelsLeading)
         returnList[['ModelsSelected']] <- csslr.utils.helpers.fList2C(modelsEquivalent)
         returnList[['SelectionReport']] <- selectionReport
@@ -258,6 +328,7 @@ csslr.model.selection <- function(response, DT.data, selectionVariables, selecti
   }
 
   returnList <- list()
+  returnList[['Info']] <- info
   returnList[['ModelsLeading']] <- csslr.utils.helpers.fList2C(modelsLeading)
   returnList[['ModelsSelected']] <- csslr.utils.helpers.fList2C(modelsEquivalent)
   returnList[['SelectionReport']] <- selectionReport

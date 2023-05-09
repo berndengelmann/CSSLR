@@ -11,7 +11,7 @@
 #' if FALSE only the leading and equivalent models are reported without details on the
 #' selection algorithm
 #' @export
-csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
+csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE, glossary = TRUE) {
 
   # Generate temp folder for saving files needed for report generation
   tmpDir <- paste0(normalizePath(tempdir()),'/')
@@ -23,14 +23,177 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
   rmdReport <- paste0(rmdReport, 'date: "`r Sys.time()`"\n')
   rmdReport <- paste0(rmdReport, 'header-includes:\n')
   rmdReport <- paste0(rmdReport, ' - \\usepackage{longtable}\n')
-  rmdReport <- paste0(rmdReport, 'output: pdf_document\n')
+  rmdReport <- paste0(rmdReport, 'output:\n')
+  rmdReport <- paste0(rmdReport, '  pdf_document:\n')
+  rmdReport <- paste0(rmdReport, '    keep_tex: true\n')
   rmdReport <- paste0(rmdReport, '---\n')
+
+  rmdReport <- paste0(rmdReport, '\n# Data, Variables and Parameters\n\n')
+  rmdReport <- paste0(rmdReport, 'In this section core properties of the data set are recorded.
+                      In particular the number of good and bad observations, the number of
+                      missing observations in each variable, and the variables that are
+                      included into and excluded from the model selection algorithm.\n\n')
+
+  goodBadTable <- data.table(table(DT.data[, get(SelectionOutput$Info$Variables$Response)]))
+  setnames(goodBadTable, names(goodBadTable), c("Indicator", "Number Observations"))
+  save(goodBadTable, file = paste0(tmpDir, 'GoodBadTable.RData'))
+
+  rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
+  rmdReport <- paste0(rmdReport, 'library(data.table)\n')
+  rmdReport <- paste0(rmdReport, 'library(xtable)\n')
+  rmdReport <- paste0(rmdReport, 'filename <- "GoodBadTable.RData"\n')
+  rmdReport <- paste0(rmdReport, 'load(filename)\n')
+  rmdReport <- paste0(rmdReport, '```\n\n')
+
+  rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
+  rmdReport <- paste0(rmdReport, 'goodBadTab <- xtable(goodBadTable, ',
+                      'caption = "Distribution of good/bad observations in the data.", label = "data:goodbad", ',
+                      'digits = c(0, 0, 0), display=c("s", "d", "d"))\n')
+  rmdReport <- paste0(rmdReport, 'align(goodBadTab) <- "lrr"\n')
+  rmdReport <- paste0(rmdReport, 'print(goodBadTab, comment=FALSE, table.placement="ht!", include.rownames = F)\n')
+  rmdReport <- paste0(rmdReport, '```\n\n')
+
+  varOverview <- data.table()
+  DT.temp <- data.table(`Variable Type` = 'Response', Variables = SelectionOutput$Info$Variables$Response)
+  varOverview <- rbind(varOverview, DT.temp)
+  DT.temp <- data.table(`Variable Type` = 'Included', Variables = paste(SelectionOutput$Info$Variables$Select, collapse = '; '))
+  varOverview <- rbind(varOverview, DT.temp)
+  if (nrow(SelectionOutput$Info$Variables$ExcludeInfo) > 0) {
+    DT.temp <- data.table(`Variable Type` = 'Excluded', Variables = paste(SelectionOutput$Info$Variables$Exclude, collapse = '; '))
+    varOverview <- rbind(varOverview, DT.temp)
+  }
+
+  excludeInfo <- SelectionOutput$Info$Variables$ExcludeInfo
+  save(varOverview, excludeInfo, file = paste0(tmpDir, 'VariablesTables.RData'))
+
+  rmdReport <- paste0(rmdReport, 'In the next table an overview of the variables contained in the data set
+                      is presented. It contains the response variables and all variables that are included
+                      in the CSSLR algorithm. The algorithm performs basic checks on each variables which
+                      might lead to variable exclusions. If no variables are excluded, this implies that
+                      all variables passed these basic checks.\n\n')
+
+  rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
+  rmdReport <- paste0(rmdReport, 'library(data.table)\n')
+  rmdReport <- paste0(rmdReport, 'library(xtable)\n')
+  rmdReport <- paste0(rmdReport, 'filename <- "VariablesTables.RData"\n')
+  rmdReport <- paste0(rmdReport, 'load(filename)\n')
+  rmdReport <- paste0(rmdReport, '```\n\n')
+
+  rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
+  rmdReport <- paste0(rmdReport, 'varOverviewTab <- xtable(varOverview, ',
+                      'caption = "Overview of the variables in the data.", label = "data:variables", ',
+                      'digits = c(0, 0, 0), display=c("s", "s", "s"))\n')
+  rmdReport <- paste0(rmdReport, 'align(varOverviewTab) <- "lrp{12cm}"\n')
+  rmdReport <- paste0(rmdReport, 'print(varOverviewTab, comment=FALSE, table.placement="ht!", include.rownames = F)\n')
+  rmdReport <- paste0(rmdReport, '```\n\n')
+
+  if (nrow(excludeInfo) > 0) {
+    rmdReport <- paste0(rmdReport, 'Some variables have been excluded from the algorithm because either
+                        the percentage of missing values is too high or the variable is categorical
+                        breaching the limit of categories. These limits are defined in the options
+                        csslr.maxCategories and csslr.maxMissingPerc.\n\n')
+
+    rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
+    rmdReport <- paste0(rmdReport, 'library(data.table)\n')
+    rmdReport <- paste0(rmdReport, 'library(xtable)\n')
+    rmdReport <- paste0(rmdReport, 'filename <- "VariablesTables.RData"\n')
+    rmdReport <- paste0(rmdReport, 'load(filename)\n')
+    rmdReport <- paste0(rmdReport, '```\n\n')
+    
+    rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
+    rmdReport <- paste0(rmdReport, 'excludeInfoTab <- xtable(excludeInfo, ',
+                        'caption = "Variables excluded from the selection and the reason for exclusion.", label = "data:exclude", ',
+                        'digits = c(0, 0, 0), display=c("s", "s", "s"))\n')
+    rmdReport <- paste0(rmdReport, 'align(excludeInfoTab) <- "lrr"\n')
+    rmdReport <- paste0(rmdReport, 'print(excludeInfoTab, comment=FALSE, table.placement="ht!", include.rownames = F)\n')
+    rmdReport <- paste0(rmdReport, '```\n\n')
+  }
+
+  rmdReport <- paste0(rmdReport, 'The parameters to control the CSSLR algorithm for this run are listed in Table
+                      \\ref{data:params}. This includes all critical values, modes, $p$-values utilized in each
+                      selection step and parameters controlling the termination of the algorithm.\n\n')
+
+  paramsTable <- data.table()
+  DT.temp <- data.table(Parameter = 'Selection Mode', Name = 'selectionMode', Value = SelectionOutput$Info$Params$SelectionMode)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Coefficient p-value', Name = 'pCoeff', Value = SelectionOutput$Info$Params$pCoeff)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Critical VIF Threshold', Name = 'vifCrit', Value = SelectionOutput$Info$Params$vifCrit)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Spiegelhalter Test p-value', Name = 'pCalib', Value = SelectionOutput$Info$Params$pCalib)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'AUC Improved Test p-value', Name = 'pAUC', Value = SelectionOutput$Info$Params$pAUC)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'MSE Improved Test p-value', Name = 'pMSE', Value = SelectionOutput$Info$Params$pMSE)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'AUC Trim Test p-value', Name = 'pAUCTrim', Value = SelectionOutput$Info$Params$pAUCTrim)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'MSE Trim Test p-value', Name = 'pMSETrim', Value = SelectionOutput$Info$Params$pMSETrim)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'AUC Equivalent Test p-value', Name = 'pAUCEquiv', Value = SelectionOutput$Info$Params$pAUCEquiv)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'MSE Equivalent Test p-value', Name = 'pMSEEquiv', Value = SelectionOutput$Info$Params$pMSEEquiv)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Apply AIC in Improvement Step', Name = 'applyAIC', Value = SelectionOutput$Info$Params$applyAIC)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Apply BIC in Improvement Step', Name = 'applyBIC', Value = SelectionOutput$Info$Params$applyBIC)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Panel Data Identifier', Name = 'panelDataIdentifier', Value = SelectionOutput$Info$Params$panelDataIdentifier)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Maximum Selection Steps', Name = 'maxSelectionSteps', Value = SelectionOutput$Info$Params$maxSelectionSteps)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Maximum Number Equivalent Models', Name = 'maxEquivalentModels', Value = SelectionOutput$Info$Params$maxEquivalentModels)
+  paramsTable <- rbind(paramsTable, DT.temp)
+  DT.temp <- data.table(Parameter = 'Skip Trimming Step', Name = 'skipTrimming', Value = SelectionOutput$Info$Params$skipTrimming)
+  paramsTable <- rbind(paramsTable, DT.temp)
+
+  save(paramsTable, file = paste0(tmpDir, 'ParametersTable.RData'))
+
+  rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
+  rmdReport <- paste0(rmdReport, 'library(data.table)\n')
+  rmdReport <- paste0(rmdReport, 'library(xtable)\n')
+  rmdReport <- paste0(rmdReport, 'filename <- "ParametersTable.RData"\n')
+  rmdReport <- paste0(rmdReport, 'load(filename)\n')
+  rmdReport <- paste0(rmdReport, '```\n\n')
+
+  rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
+  rmdReport <- paste0(rmdReport, 'paramsTab <- xtable(paramsTable, ',
+                      'caption = "Parameters used to control the selection algorithm.", label = "data:params", ',
+                      'digits = c(0, 0, 0, 4), display=c("s", "s", "s", "f"))\n')
+  rmdReport <- paste0(rmdReport, 'align(paramsTab) <- "lrlr"\n')
+  rmdReport <- paste0(rmdReport, 'print(paramsTab, comment=FALSE, tabular.environment = "longtable",
+                      hline.after=c(-1,0), table.placement="ht!", include.rownames = F)\n')
+  rmdReport <- paste0(rmdReport, '```\n\n')
+
+  rmdReport <- paste0(rmdReport, '\\clearpage\n\n')
+
   rmdReport <- paste0(rmdReport, '\n# Selected Models\n\n')
-  rmdReport <- paste0(rmdReport, 'In this section all statistically equivalent
-                      models are displayed together with their summary statistics.
-                      In the first part a table containing all equivalent models together
-                      with AUC and MSE is displayed. After that the leading model(s) and
-                      all equivalent models are presented.\n\n')
+  
+  if (length(SelectionOutput$ModelsLeading) == 1) {
+    rmdReport <- paste0(rmdReport, 'In this section all selected models are displayed. First the
+                        leading model is reported, i.e., the model that shows both the highest
+                        area under the ROC cuve (AUC) and the lowest mean squared error (MSE).
+                        \n\n')
+    if (length(SelectionOutput$ModelsSelected) > 0) {
+      rmdReport <- paste0(rmdReport, 'In terms of statistical tests, there are more models that
+                          could be considered as equivalent to the leading model. They have slightly
+                          worse AUC and MSE in nominal terms but these numbers are not distinguishable
+                          by means of statistical tests.
+                          \n\n')
+    }
+  } else {
+    rmdReport <- paste0(rmdReport, 'In this section all selected models are displayed. First the
+                        leading models is reported, i.e., the two models that show the highest
+                        area under the ROC cuve (AUC) and the lowest mean squared error (MSE).
+                        \n\n')
+    if (length(SelectionOutput$ModelsSelected) > 0) {
+      rmdReport <- paste0(rmdReport, 'In terms of statistical tests, there are more models that
+                          could be considered as equivalent to the leading models. They have slightly
+                          worse AUC or MSE in nominal terms but these numbers are not distinguishable
+                          by means of statistical tests.
+                          \n\n')
+    }
+  }
 
   rmdReport <- paste0(rmdReport, '\n## Overview of Selected Models\n\n')
 
@@ -41,6 +204,8 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
   rmdReport <- paste0(rmdReport, 'filename <- "SelectionReport.RData"\n')
   rmdReport <- paste0(rmdReport, 'load(filename)\n')
   rmdReport <- paste0(rmdReport, '```\n\n')
+  
+  sr <- copy(SelectionOutput$SelectionReport)
 
   # Find the last EQUIVALENT report to be displayed
   foundStep <- ''
@@ -49,19 +214,17 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
       foundStep <- theStep
     }
   }
+  sr[[foundStep]][['EQUIVALENT']] <- sr[[foundStep]][['EQUIVALENT']][, c('Model','AUC','MSE','Decision'), with = F]
   rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
   rmdReport <- paste0(rmdReport, 'displayTable <- sr[["',foundStep,'"]][["EQUIVALENT"]]\n')
   rmdReport <- paste0(rmdReport, 'displayTable <- displayTable[Decision != "Rejected"]\n')
-  rmdReport <- paste0(rmdReport, 'oldNames <- names(displayTable)\n')
-  rmdReport <- paste0(rmdReport, 'newNames <- c("Model","AUC","pAUC","MSE","pMSE","Decision")\n')
-  rmdReport <- paste0(rmdReport, 'setnames(displayTable, oldNames, newNames)\n')
   rmdReport <- paste0(rmdReport, 'setorderv(displayTable, c("Decision","AUC"), order = c(-1,-1))\n')
   rmdReport <- paste0(rmdReport, 'equivTab <- xtable(displayTable, ',
                       'caption = "Final selection of equivalent models.", label = "step:final:equiv", ',
-                      'digits = c(0, 0, 4, 1, 3, 1, 0), display=c("s", "s", "f", "e", "e", "e", "s"))\n')
-  rmdReport <- paste0(rmdReport, 'align(equivTab) <- "lp{8cm}rrrrr"\n')
+                      'digits = c(0, 0, 4, 6, 0), display=c("s", "s", "f", "e", "s"))\n')
+  rmdReport <- paste0(rmdReport, 'align(equivTab) <- "lp{9cm}rrr"\n')
   rmdReport <- paste0(rmdReport, 'print(equivTab, comment=FALSE, tabular.environment = "longtable",
-                        table.placement="ht!", include.rownames = F)\n')
+                      hline.after=c(-1,0), table.placement="ht!", include.rownames = F)\n')
   rmdReport <- paste0(rmdReport, '```\n\n\\clearpage\n\n')
 
   # Start with the header of the RMarkdown output
@@ -77,7 +240,7 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
   rmdReport <- paste0(rmdReport, '\n## Leading Model(s)\n\n')
   for (i in 1:length(allModels)) {
     theModel <- allModels[i][[1]]
-    modelResult <- csslr.model.analysis.lr(theModel, DT.data, lr=F, roc=F, ic=F, calib=F, quiet=T, dataValidation = F)
+    modelResult <- csslr.model.analysis.lr(as.formula(theModel), DT.data, lr=F, roc=F, ic=F, calib=F, quiet=T, dataValidation = F)
     # Next create the documentation for the model summary
     model.summary.xtable <- xtable(modelResult[['model.summary']])
     modelOutput[[paste0('summary',i)]] <- model.summary.xtable
@@ -90,7 +253,7 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
     rmdReport <- paste0(rmdReport, 'summaryName$`Pr(>|z|)` <- format(summaryName$`Pr(>|z|)`, scientific = T, digits = 3)\n')
     rmdReport <- paste0(rmdReport, 'summaryName$`Pr(>|z|)` <- ifelse(as.numeric(summaryName$`Pr(>|z|)`) < 1.0e-10, "< 1.0e-10", summaryName$`Pr(>|z|)`)\n')
     rmdReport <- paste0(rmdReport, 'summaryTab <- xtable(summaryName, caption="Summary of ', modelName, '.", label = "tab:', referenceTag, ':leadsummary", ',
-                        'digits = c(0, 3, 4, 2, 4), display=c("s", "f", "f", "f", "g"))\n')
+                        'digits = c(0, 5, 5, 2, 4), display=c("s", "f", "f", "f", "g"))\n')
     rmdReport <- paste0(rmdReport, 'align(summaryTab) <- "lrrrr"\n')
     rmdReport <- paste0(rmdReport, 'print(summaryTab, comment=FALSE, table.placement="ht!", include.rownames = T)\n')
     rmdReport <- paste0(rmdReport, '```\n')
@@ -102,9 +265,9 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
   modelsEquivalent <- SelectionOutput$ModelsSelected
   modelsLeading <- SelectionOutput$ModelsLeading
   for (i in 1:length(modelsEquivalent)) {
-    varNames <- all.vars(modelsEquivalent[[i]])
+    varNames <- all.vars(as.formula(modelsEquivalent[[i]]))
     for (j in 1:length(modelsLeading)) {
-      leadingNames <- all.vars(modelsLeading[[j]])
+      leadingNames <- all.vars(as.formula(modelsLeading[[j]]))
       if (length(varNames) == length(leadingNames) & all(varNames %in% leadingNames)) {
         removeIdx <- c(removeIdx, i)
       }
@@ -114,42 +277,45 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
     removeIdx <- unique(removeIdx)
     modelsEquivalent <- modelsEquivalent[-removeIdx]
   }
-  
-  # Start with the header of the RMarkdown output
-  rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
-  rmdReport <- paste0(rmdReport, 'library(data.table)\n')
-  rmdReport <- paste0(rmdReport, 'library(xtable)\n')
-  rmdReport <- paste0(rmdReport, 'filename <- "EquivalentModels.RData"\n')
-  rmdReport <- paste0(rmdReport, 'load(filename)\n')
-  rmdReport <- paste0(rmdReport, '```\n\n')
 
-  modelEquivalent <- list()
-  allModels <- modelsEquivalent
-  rmdReport <- paste0(rmdReport, '\n## Equivalent Model(s)\n\n')
-  for (i in 1:length(allModels)) {
-    theModel <- allModels[i][[1]]
-    modelResult <- csslr.model.analysis.lr(theModel, DT.data, lr=F, roc=F, ic=F, calib=F, quiet=T, dataValidation = F)
-    # Next create the documentation for the model summary
-    model.summary.xtable <- xtable(modelResult[['model.summary']])
-    modelEquivalent[[paste0('summary',i)]] <- model.summary.xtable
-    # RMarkdown chunk for the model summary
-    modelName <- paste0('Equivalent Model ', i)
-    referenceTag <- paste0('selectmodel', i)
-    outputObjectName <- 'modelEquivalent'
-    rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
-    rmdReport <- paste0(rmdReport, 'summaryName <- ', outputObjectName, '[["summary',i,'"]]\n')
-    rmdReport <- paste0(rmdReport, 'summaryName$`Pr(>|z|)` <- format(summaryName$`Pr(>|z|)`, scientific = T, digits = 3)\n')
-    rmdReport <- paste0(rmdReport, 'summaryName$`Pr(>|z|)` <- ifelse(as.numeric(summaryName$`Pr(>|z|)`) < 1.0e-10, "< 1.0e-10", summaryName$`Pr(>|z|)`)\n')
-    rmdReport <- paste0(rmdReport, 'summaryTab <- xtable(summaryName, caption="Summary of ', modelName, '.", label = "tab:', referenceTag, ':equivsummary", ',
-                        'digits = c(0, 3, 4, 2, 4), display=c("s", "f", "f", "f", "g"))\n')
-    rmdReport <- paste0(rmdReport, 'align(summaryTab) <- "lrrrr"\n')
-    rmdReport <- paste0(rmdReport, 'print(summaryTab, comment=FALSE, table.placement="ht!", include.rownames = T)\n')
-    rmdReport <- paste0(rmdReport, '```\n')
+  # Output equivalent models only if there are any
+  if (length(modelsEquivalent) > 0) {
+
+    # Start with the header of the RMarkdown output
+    rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
+    rmdReport <- paste0(rmdReport, 'library(data.table)\n')
+    rmdReport <- paste0(rmdReport, 'library(xtable)\n')
+    rmdReport <- paste0(rmdReport, 'filename <- "EquivalentModels.RData"\n')
+    rmdReport <- paste0(rmdReport, 'load(filename)\n')
+    rmdReport <- paste0(rmdReport, '```\n\n')
+    
+    modelEquivalent <- list()
+    allModels <- modelsEquivalent
+    rmdReport <- paste0(rmdReport, '\n## Equivalent Model(s)\n\n')
+    for (i in 1:length(allModels)) {
+      theModel <- allModels[i][[1]]
+      modelResult <- csslr.model.analysis.lr(as.formula(theModel), DT.data, lr=F, roc=F, ic=F, calib=F, quiet=T, dataValidation = F)
+      # Next create the documentation for the model summary
+      model.summary.xtable <- xtable(modelResult[['model.summary']])
+      modelEquivalent[[paste0('summary',i)]] <- model.summary.xtable
+      # RMarkdown chunk for the model summary
+      modelName <- paste0('Equivalent Model ', i)
+      referenceTag <- paste0('selectmodel', i)
+      outputObjectName <- 'modelEquivalent'
+      rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
+      rmdReport <- paste0(rmdReport, 'summaryName <- ', outputObjectName, '[["summary',i,'"]]\n')
+      rmdReport <- paste0(rmdReport, 'summaryName$`Pr(>|z|)` <- format(summaryName$`Pr(>|z|)`, scientific = T, digits = 3)\n')
+      rmdReport <- paste0(rmdReport, 'summaryName$`Pr(>|z|)` <- ifelse(as.numeric(summaryName$`Pr(>|z|)`) < 1.0e-10, "< 1.0e-10", summaryName$`Pr(>|z|)`)\n')
+      rmdReport <- paste0(rmdReport, 'summaryTab <- xtable(summaryName, caption="Summary of ', modelName, '.", label = "tab:', referenceTag, ':equivsummary", ',
+                          'digits = c(0, 3, 4, 2, 4), display=c("s", "f", "f", "f", "g"))\n')
+      rmdReport <- paste0(rmdReport, 'align(summaryTab) <- "lrrrr"\n')
+      rmdReport <- paste0(rmdReport, 'print(summaryTab, comment=FALSE, table.placement="ht!", include.rownames = T)\n')
+      rmdReport <- paste0(rmdReport, '```\n')
+    }
+    rmdReport <- paste0(rmdReport, '\n\\clearpage\n\n')
+    save(modelEquivalent, file = paste0(tmpDir, 'EquivalentModels.RData'))
+
   }
-  rmdReport <- paste0(rmdReport, '\n\\clearpage\n\n')
-  save(modelEquivalent, file = paste0(tmpDir, 'EquivalentModels.RData'))
-
-  sr <- SelectionOutput$SelectionReport
 
   if (detailed == TRUE) {
     rmdReport <- paste0(rmdReport, '\n# Model Selection Report\n\n')
@@ -168,56 +334,119 @@ csslr.utils.genreport <- function(SelectionOutput, DT.data, detailed = TRUE) {
     rmdReport <- paste0(rmdReport, '```\n\n')
     
     for (i in 1:length(sr)) {
-      sr[[paste0('Step',i)]][['IMPROVED']] <- sr[[paste0('Step',i)]][['IMPROVED']][, c('AIC','BIC') := NULL]
-      oldNames <- names(sr[[paste0('Step',i)]][['IMPROVED']])
-      newNames <- c('Model','pCoeff','AUC','pAUC','MSE','pMSE','Decision')
-      setnames(sr[[paste0('Step',i)]][['IMPROVED']], oldNames, newNames)
+      names2remove <- c('Coefficient p-value', 'AIC', 'BIC', 'VIF', 'AUC-test p-value', 'MSE-test p-value')
+      sr[[paste0('Step',i)]][['IMPROVED']][, eval(names2remove) := NULL]
       rmdReport <- paste0(rmdReport, '\n## Model Selection Step ',i,'\n\n')
       # Table generation for the IMPROVED step
       rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
       rmdReport <- paste0(rmdReport, 'impTab <- xtable(sr[["Step', i, '"]][["IMPROVED"]], ',
-                          'caption = "Model selection Step ', i, ': Find IMPROVED models", label = "step:', i, ':improved", ',
-                          'digits = c(0, 0, 1, 4, 1, 3, 1, 0), display=c("s", "s", "e", "f", "e", "e", "e", "s"))\n')
-      rmdReport <- paste0(rmdReport, 'align(impTab) <- "lp{5cm}rrrrrr"\n')
+                          'caption = "Model selection Step ', i, ': Find IMPROVED models.", label = "step:', i, ':improved", ',
+                          'digits = c(0, 0, 4, 6, 0), display=c("s", "s", "f", "e", "s"))\n')
+      rmdReport <- paste0(rmdReport, 'align(impTab) <- "lp{9cm}rrr"\n')
       rmdReport <- paste0(rmdReport, 'print(impTab, comment=FALSE, tabular.environment = "longtable",
-                        table.placement="ht!", include.rownames = F)\n')
+                          hline.after=c(-1,0), table.placement="ht!", include.rownames = F)\n')
       rmdReport <- paste0(rmdReport, '```\n\n\\clearpage\n\n')
       # Table generation for the TRIM step
       if ("TRIM" %in% names(sr[[paste0("Step",i)]]) == TRUE) {
         rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
         rmdReport <- paste0(rmdReport, 'trimTab <- xtable(sr[["Step', i, '"]][["TRIM"]], ',
-                            'caption = "Model selection Step ', i, ': Outcome of the TRIM process", label = "step:', i, ':trim", ',
+                            'caption = "Model selection Step ', i, ': Outcome of TRIM process.", label = "step:', i, ':trim", ',
                             'digits = c(0, 0, 0), display=c("s", "s", "s"))\n')
-        rmdReport <- paste0(rmdReport, 'align(trimTab) <- "lp{12cm}r"\n')
+        rmdReport <- paste0(rmdReport, 'align(trimTab) <- "lp{9cm}r"\n')
         rmdReport <- paste0(rmdReport, 'print(trimTab, comment=FALSE, tabular.environment = "longtable",
-                        table.placement="ht!", include.rownames = F)\n')
+                            hline.after=c(-1,0), table.placement="ht!", include.rownames = F)\n')
         rmdReport <- paste0(rmdReport, '```\n\n\\clearpage\n\n')
       }
-      # Table generation for the TRIM step
+      # Table generation for the LEADING step
       if ("LEADING" %in% names(sr[[paste0("Step",i)]]) == TRUE) {
         rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
         rmdReport <- paste0(rmdReport, 'leadTab <- xtable(sr[["Step', i, '"]][["LEADING"]], ',
-                            'caption = "Model selection Step ', i, ': Outcome of finding LEADING models", label = "step:', i, ':lead", ',
-                            'digits = c(0, 0, 4, 4, 0), display=c("s", "s", "f", "f", "s"))\n')
-        rmdReport <- paste0(rmdReport, 'align(leadTab) <- "lp{10cm}rrr"\n')
+                            'caption = "Model selection Step ', i, ': Find LEADING models.", label = "step:', i, ':lead", ',
+                            'digits = c(0, 0, 4, 6, 0), display=c("s", "s", "f", "e", "s"))\n')
+        rmdReport <- paste0(rmdReport, 'align(leadTab) <- "lp{9cm}rrr"\n')
         rmdReport <- paste0(rmdReport, 'print(leadTab, comment=FALSE, tabular.environment = "longtable",
-                        table.placement="ht!", include.rownames = F)\n')
+                            hline.after=c(-1,0), table.placement="ht!", include.rownames = F)\n')
         rmdReport <- paste0(rmdReport, '```\n\n\\clearpage\n\n')
       }
       if ("EQUIVALENT" %in% names(sr[[paste0("Step",i)]]) == TRUE) {
-        oldNames <- names(sr[[paste0('Step',i)]][['EQUIVALENT']])
-        newNames <- c('Model','AUC','pAUC','MSE','pMSE','Decision')
-        setnames(sr[[paste0('Step',i)]][['EQUIVALENT']], oldNames, newNames)
+        sr[[paste0('Step',i)]][['EQUIVALENT']] <- sr[[paste0('Step',i)]][['EQUIVALENT']][, c('Model','AUC','MSE','Decision'), with = F]
         rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
         rmdReport <- paste0(rmdReport, 'equivTab <- xtable(sr[["Step', i, '"]][["EQUIVALENT"]], ',
-                            'caption = "Model selection Step ', i, ': Outcome of finding EQUIVALENT models", label = "step:', i, ':equiv", ',
-                            'digits = c(0, 0, 4, 1, 3, 1, 0), display=c("s", "s", "f", "e", "e", "e", "s"))\n')
-        rmdReport <- paste0(rmdReport, 'align(equivTab) <- "lp{8cm}rrrrr"\n')
+                            'caption = "Model selection Step ', i, ': Find EQUIVALENT models.", label = "step:', i, ':equiv", ',
+                            'digits = c(0, 0, 4, 6, 0), display=c("s", "s", "f", "e", "s"))\n')
+        rmdReport <- paste0(rmdReport, 'align(equivTab) <- "lp{9cm}rrr"\n')
         rmdReport <- paste0(rmdReport, 'print(equivTab, comment=FALSE, tabular.environment = "longtable",
-                        table.placement="ht!", include.rownames = F)\n')
+                            hline.after=c(-1,0), table.placement="ht!", include.rownames = F)\n')
         rmdReport <- paste0(rmdReport, '```\n\n\\clearpage\n\n')
       }
     }
+  }
+  
+  # Glossary with explanation of the most important concepts applied in the selection algorithm
+  if (glossary == TRUE) {
+
+    rmdReport <- paste0(rmdReport, '\n# Glossary\n\n')
+    rmdReport <- paste0(rmdReport, 'In this section some quantities and tests that are
+                        heavily used in the selection algorithm are explained in detail
+                        and references where more information could be found are provided.
+                        The selection algorithm focuses on two key dimensions of a logistic
+                        regression model, discrimination and calibration. Discrimination
+                        is measured in terms of the area under the ROC curve (AUC) while
+                        calibration is measured by the meas squared error (MSE). Each quantities
+                        and the associated tests are outlined in a separate subsection.\n\n')
+
+    rmdReport <- paste0(rmdReport, '\n## The Receiver Operating Characteristic Curve\n\n')
+    rmdReport <- paste0(rmdReport, 'The receiver operating characteristic (ROC) curve is a concept
+                        that was originally devloped in signal detection theory but is today applied
+                        in various fields of science like medicine and economics. The starting point
+                        of the ROC curve is a variable $V$ that is used to explain a good/bad event which
+                        is coded by a 0/1 indicator variable. The distribution of $V$ for both the
+                        good and the bad event is analyzed when determining the ROC curve. The aim of the ROC
+                        curve is providing a measure of the ability of $V$ to separate the good/bad
+                        event. This is illustrated in the Figure below.\n\n')
+    
+    pathToImage <- paste0(.libPaths()[1], '/CSSLR/resources/ROC_Distribution.png')
+    rmdReport <- paste0(rmdReport, '![Distribution of $V$ for good/bad observations.\\label{fig:rocdist}](',pathToImage,')')
+
+    rmdReport <- paste0(rmdReport, '\n\n\n\n As can be seen from the figure, the variable $V$ is able to separate
+                        good from bad observations, although not perfectly as there is still some
+                        overlap of both distributions. The ROC curve is providing a measure to what extent
+                        $V$ can separate good from bad observation.\n\n')
+    rmdReport <- paste0(rmdReport, 'To construct the ROC curve, a cutoff value $C$ is defined and a decision rule
+                        associated with $C$. The decision rule is that when $V \\le C$ an observation is
+                        considered as bad while for $V > C$ an observation is considered as good. Under
+                        this classification rule, four scenario can happen which are summarized in the table
+                        below.\n\n')
+    
+    rocTable <- data.table()
+    DT.temp <- data.table(V1 = 'Good', V2 = 'Wrong Decision (False Alarm)', V3 = 'Correct Decision')
+    rocTable <- rbind(rocTable, DT.temp)
+    DT.temp <- data.table(V1 = 'Bad', V2 = 'Correct Decision (Hit)', V3 = 'Wrong Decision')
+    rocTable <- rbind(rocTable, DT.temp)
+    setnames(rocTable, names(rocTable), c('', '$V \\le C$', '$V > C$'))
+
+    save(rocTable, file = paste0(tmpDir, 'ROCTable.RData'))
+
+    rmdReport <- paste0(rmdReport, '```{r include = FALSE}\n')
+    rmdReport <- paste0(rmdReport, 'library(data.table)\n')
+    rmdReport <- paste0(rmdReport, 'library(xtable)\n')
+    rmdReport <- paste0(rmdReport, 'filename <- "ROCTable.RData"\n')
+    rmdReport <- paste0(rmdReport, 'load(filename)\n')
+    rmdReport <- paste0(rmdReport, '```\n\n')
+
+    rmdReport <- paste0(rmdReport, '```{r results="asis", echo=FALSE, warning=FALSE}\n')
+    rmdReport <- paste0(rmdReport, 'rocTab <- xtable(rocTable, ',
+                        'caption = "Outcomes of the classification rules using cutoff $C$", label = "tab:roc", ',
+                        'digits = c(0, 0, 0, 0), display=c("s", "s", "s", "s"))\n')
+    rmdReport <- paste0(rmdReport, 'align(rocTab) <- "llcc"\n')
+    rmdReport <- paste0(rmdReport, 'print(rocTab, comment=FALSE, table.placement="ht!", include.rownames = F,
+                        sanitize.text.function = identity)\n')
+    rmdReport <- paste0(rmdReport, '```\n\n')
+    
+    rmdReport <- paste0(rmdReport, 'Under the decision rule using the cutoff value $C$, the green area in
+                        Figure \\ref{fig:rocdist} represents the bad observations that were correctly
+                        classified as bad. The precentage of bads, i.e. the green area, is also called
+                        the hit rate.\n\n')
   }
 
   save(sr, file = paste0(tmpDir, 'SelectionReport.RData'))

@@ -120,6 +120,6 @@ SelectionOutput <- csslr.model.selection('Response', DT.data, selectionVariables
 print(SelectionOutput[['ModelsLeading']])
 
 # Print all equivalent models (may include more than the leading models)
-print(SelectionOutput[['Equivalent']])
+print(SelectionOutput[['ModelsSelected']])
 
 }
