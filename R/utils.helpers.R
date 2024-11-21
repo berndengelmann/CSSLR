@@ -37,3 +37,17 @@ csslr.utils.helpers.fList2C <- function(formulaList) {
   }
   return(characterList)
 }
+
+#' @noRd
+csslr.utils.helpers.checkDT <- function(variable, DT.data, fctName) {
+  `%notin%` <- Negate(`%in%`)
+
+  if (class(DT.data)[1] != "data.table")
+    stop(paste0('Error in ', functionName, ': The data object is not of the class data.table'))
+
+  if (is.character(variable) == FALSE)
+    stop(paste0('Error in ', functionName, ': The column name', variable, ' is not of type character'))
+
+  if (variable %notin% names(DT.data))
+    stop(paste0('Error in ', functionName, ': There is no column with name ', variable, ' in the data.table object'))
+}

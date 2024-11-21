@@ -110,38 +110,20 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
   if (nrow(DT.data) == 0)
     stop('After removing NA and Inf of all variables in the model formula the data set is empty')
 
-  # There are a couple of problems in the execution of the next lines:
-  # - The glm function will not find modelLink when it tries to build the family
-  # - Later the vif function using glm results will not find modelFormula and DT.data which is stored as string in the model results
-  # Solution: Create a temporary environment on .GlobalEnv where these variables can be found and delete it before exiting
-
-  # Ensure that no existing variable is overwritten by accident
-  envExists <- FALSE
-  if (exists('.myEnv', envir = .GlobalEnv)) {
-    saveOldEnv <- .GlobalEnv$.myEnv
-    envExists <- TRUE
-  }
-
-  .GlobalEnv$.myEnv <- new.env()
-  .GlobalEnv$.myEnv$dt <- DT.data
-  .GlobalEnv$.myEnv$modelFormula <- modelFormula
-  .GlobalEnv$.myEnv$modelLink <- 'logit'
-
   # Estimation of the full model
   if (quiet == FALSE)
     print("Estimation of the full model...")
-  fullModel <- glm(formula=as.formula(.myEnv$modelFormula), data=.myEnv$dt, family=binomial(link=.myEnv$modelLink), y=FALSE, model=FALSE)
-
-  # Computing the mean number of periods per observation for p-value correction
-  meanObservationPeriods <- 1
-  if (panelDataIdentifier != '') {
-    numberTotalObservations <- nrow(DT.data)
-    numberUniqueObservations <- length(unique(DT.data[, get(panelDataIdentifier)]))
-    meanObservationPeriods <- numberTotalObservations / numberUniqueObservations
-  }
+  fullModel <- glm(formula=as.formula(modelFormula), data=DT.data, family=binomial(link="logit"), y=FALSE, model=FALSE)
 
   # Model summary and model trimming (Store model formula separately because it gets lost otherwise)
+  # Adjust the model summary for the panel structure of the data set if necessary
   modelResults[["model.summary"]] <- summary(fullModel)
+  if (panelDataIdentifier != '') {
+    # Adjust standard error
+    adjCov <- sandwich::vcovPC(fullModel, cluster = DT.data[, get(panelDataIdentifier)])
+    ct <- lmtest::coeftest(fullModel, vcov = adjCov)
+    modelResults[["model.summary"]]$coefficients[,2:4] <- ct[,2:4]
+  }
   modelResults[["model.summary"]]$call$formula <- modelFormula
   modelResults[["model.summary"]]$deviance.resid <- NA
   fullModel.aic <- AIC(fullModel)
@@ -177,26 +159,6 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
   }
   modelResults[["full.model"]] <- fullModel
   modelResults[["vif"]] <- fullModel.vif
-  modelResults[["meanObservationPeriods"]] <- meanObservationPeriods
-
-  # Adjust the model summary for the panel structure of the data set if necessary
-  if (meanObservationPeriods > 1) {
-    numberCoefficients <- nrow(modelResults[['model.summary']]$coefficients)
-    adj <- sqrt(meanObservationPeriods)
-    for (i in 1:numberCoefficients) {
-      # Adjust standard error
-      modelResults[['model.summary']]$coefficients[i, 2] <- modelResults[['model.summary']]$coefficients[i, 2] * adj
-      # Correct the test statistic
-      modelResults[['model.summary']]$coefficients[i, 3] <- modelResults[['model.summary']]$coefficients[i, 3] / adj
-      # Correct the p-value
-      tempProb <- pnorm(modelResults[['model.summary']]$coefficients[i, 3])
-      if (modelResults[['model.summary']]$coefficients[i, 3] < 0.0) {
-        modelResults[['model.summary']]$coefficients[i, 4] <- 2.0 * tempProb
-      } else {
-        modelResults[['model.summary']]$coefficients[i, 4] <- 2.0 * (1.0 - tempProb)
-      }
-    }
-  }
 
   if (ic == TRUE) {
     modelResults[["ic"]] <- list()
@@ -251,7 +213,7 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
       } else {
         reducedFormula <- as.formula(paste(c(responseVar, '1'), collapse = ' ~ '))
       }
-      reducedModel <- get(glmFunction)(as.formula(reducedFormula), data=DT.data, family=binomial(link=.myEnv$modelLink), y=FALSE, model=FALSE)
+      reducedModel <- get(glmFunction)(as.formula(reducedFormula), data=DT.data, family=binomial(link="logit"), y=FALSE, model=FALSE)
       if (ic == TRUE) {
         reducedModel.aic <- AIC(reducedModel)
         reducedModel.bic <- BIC(reducedModel)
@@ -266,10 +228,6 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
       # Carry out the lr test if it is needed
       if (lr == TRUE) {
         lrTestResult <- lrtest(fullModel, reducedModel)
-        if (meanObservationPeriods > 1) {
-          lrTestResult$Chisq[2] <- lrTestResult$Chisq[2] / meanObservationPeriods
-          lrTestResult$`Pr(>Chisq)` <- 1.0 - pchisq(lrTestResult$Chisq[2], df = -lrTestResult$Df[2])
-        }
         modelResults[["lr.test"]][[increment]] <- lrTestResult
       }
       rm(reducedModel)
@@ -293,6 +251,10 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
     modelRoc$numCases <- length(modelRoc$cases)
     modelRoc$numControls <- length(modelRoc$controls)
     saveModelRoc <- csslr.utils.trim(modelRoc, trim4plot = TRUE)
+    if (getOption('csslr.use.ar') == TRUE) {
+      saveModelRoc$ar <- 2.0 * saveModelRoc$auc - 1.0
+      saveModelRoc$auc <- NULL
+    }
     modelResults[["roc"]][[modelNames[1]]] <- saveModelRoc
     modelResults[["roc.test"]][[modelNames[1]]] <- saveModelRoc
     for (i in seq(2, length(modelNames), length.out = max(0, length(modelNames) - 1))) {
@@ -302,6 +264,14 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
       tempRocTest <- pROC::roc.test(modelRoc, tempRoc, method = 'delong', quiet = TRUE)
       tempRoc <- csslr.utils.trim(tempRoc)
       tempRocTest <- csslr.utils.trim(tempRocTest)
+      if (getOption('csslr.use.ar') == TRUE) {
+        tempRoc$ar <- 2.0 * tempRoc$auc - 1.0
+        tempRoc$auc <- NULL
+        tempRocTest$roc1$ar <- 2.0 * tempRocTest$roc1$auc - 1.0
+        tempRocTest$roc1$auc <- NULL
+        tempRocTest$roc2$ar <- 2.0 * tempRocTest$roc2$auc - 1.0
+        tempRocTest$roc2$auc <- NULL
+      }
       modelResults[["roc"]][[modelNames[i]]] <- tempRoc
       modelResults[["roc.test"]][[modelNames[i]]] <- tempRocTest
     }
@@ -326,12 +296,6 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
     }
     class(modelResults[["calib"]]) <- "csslr.model.analysis.lr.calib"
     class(modelResults[["calib.test"]]) <- "csslr.model.analysis.lr.calib.test"
-  }
-
-  if (envExists == TRUE) {
-    .GlobalEnv$.myEnv <- saveOldEnv
-  } else {
-    rm(.myEnv, envir = .GlobalEnv)
   }
 
   class(modelResults) <- "csslr.model.analysis.lr"
