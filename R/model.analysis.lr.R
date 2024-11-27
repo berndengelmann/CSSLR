@@ -109,11 +109,15 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
   # Check if these is still some data left
   if (nrow(DT.data) == 0)
     stop('After removing NA and Inf of all variables in the model formula the data set is empty')
+  
+  # Workaround to prevent an error in vif (not finding DT.data)
+  .GlobalEnv$.csslrEnvnmt <- new.env()
+  .GlobalEnv$.csslrEnvnmt$dt <- DT.data
 
   # Estimation of the full model
   if (quiet == FALSE)
     print("Estimation of the full model...")
-  fullModel <- glm(formula=as.formula(modelFormula), data=DT.data, family=binomial(link="logit"), y=FALSE, model=FALSE)
+  fullModel <- glm(formula=as.formula(modelFormula), data=.csslrEnvnmt$dt, family=binomial(link="logit"), y=FALSE, model=FALSE)
 
   # Model summary and model trimming (Store model formula separately because it gets lost otherwise)
   # Adjust the model summary for the panel structure of the data set if necessary
@@ -152,6 +156,9 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
   } else {
     fullModel.vif <- "No meaningful VIF can be computed for models with one variable only"
   }
+  
+  # After completion of vif, the new environment is no longer needed
+  rm(.csslrEnvnmt, envir = .GlobalEnv)
 
   # Saving the output
   if (lr == FALSE & fullModelTrim == TRUE) {
