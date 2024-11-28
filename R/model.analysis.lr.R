@@ -113,11 +113,12 @@ csslr.model.analysis.lr <- function(modelFormula, DT.data, panelDataIdentifier='
   # Workaround to prevent an error in vif (not finding DT.data)
   .GlobalEnv$.csslrEnvnmt <- new.env()
   .GlobalEnv$.csslrEnvnmt$dt <- DT.data
+  .GlobalEnv$.csslrEnvnmt$fmla <- as.formula(modelFormula)
 
   # Estimation of the full model
   if (quiet == FALSE)
     print("Estimation of the full model...")
-  fullModel <- glm(formula=as.formula(modelFormula), data=.csslrEnvnmt$dt, family=binomial(link="logit"), y=FALSE, model=FALSE)
+  fullModel <- glm(formula=.csslrEnvnmt$fmla, data=.csslrEnvnmt$dt, family=binomial(link="logit"), y=FALSE, model=FALSE)
 
   # Model summary and model trimming (Store model formula separately because it gets lost otherwise)
   # Adjust the model summary for the panel structure of the data set if necessary

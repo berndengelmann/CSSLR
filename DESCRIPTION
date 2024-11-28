@@ -1,7 +1,7 @@
 Package: CSSLR
 Type: Package
 Title: Comprehensive Stepwise Selection for Logistic Regression
-Version: 0.1.11
+Version: 0.1.12
 Date: 2024-11-25
 Encoding: UTF-8
 License: MPL-2.0 | file LICENSE
